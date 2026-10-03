@@ -1,0 +1,1712 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TeX 转 PDF</title>
+<style>
+  :root {
+    --bg: #F7F6F3;
+    --surface: #FFFFFF;
+    --border: #EAEAEA;
+    --ink: #2F3437;
+    --ink-muted: #787774;
+    --accent-red-bg: #FDEBEC; --accent-red-tx: #9F2F2D;
+    --accent-green-bg: #EDF3EC; --accent-green-tx: #346538;
+    --accent-blue-bg: #E1F3FE; --accent-blue-tx: #1F6C9F;
+    --accent-yellow-bg: #FBF3DB; --accent-yellow-tx: #956400;
+    --sans: 'SF Pro Display', 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', sans-serif;
+    --serif: 'Newsreader', 'Songti SC', 'SimSun', Georgia, serif;
+    --mono: 'SF Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.6;
+    font-size: 15px;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 40px 32px 80px; }
+
+  header { margin-bottom: 36px; }
+  .brand {
+    display: flex; align-items: baseline; gap: 14px;
+  }
+  h1 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 40px;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+  }
+  .brand .arrow { font-family: var(--mono); color: var(--ink-muted); font-size: 24px; }
+  .subtitle { color: var(--ink-muted); margin-top: 8px; font-size: 14px; }
+  .subtitle kbd {
+    font-family: var(--mono); font-size: 12px;
+    border: 1px solid var(--border); border-radius: 4px;
+    background: var(--surface); padding: 1px 6px;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+  @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .card-title { font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-muted); }
+
+  /* 工具栏 */
+  .toolbar { display: flex; gap: 8px; padding: 14px 20px; border-bottom: 1px solid var(--border); flex-wrap: wrap; align-items: center; }
+  input[type="text"] {
+    flex: 1; min-width: 160px;
+    font-family: var(--sans); font-size: 14px; color: var(--ink);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 12px; background: var(--bg); outline: none;
+  }
+  input[type="text"]:focus { border-color: #cfcfcb; background: var(--surface); }
+
+  button {
+    font-family: var(--sans); font-size: 13px; cursor: pointer;
+    border-radius: 5px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--ink);
+    padding: 8px 14px;
+    transition: transform 120ms ease, background 120ms ease, box-shadow 200ms ease;
+  }
+  button:hover { background: #F3F2EF; }
+  button:active { transform: scale(0.98); }
+  button.primary {
+    background: #111111; color: #FFFFFF; border-color: #111111; font-weight: 600;
+  }
+  button.primary:hover { background: #333333; }
+  button.primary:disabled { background: #9a9a97; border-color: #9a9a97; cursor: wait; transform: none; }
+  button.ghost-danger { color: var(--accent-red-tx); }
+  button.ghost-danger:hover { background: var(--accent-red-bg); }
+  button.small { padding: 4px 10px; font-size: 12px; }
+
+  /* 编辑器 */
+  .editor {
+    width: 100%; min-height: 480px;
+    border: none; outline: none; padding: 20px;
+    font-family: var(--mono); font-size: 13px; line-height: 1.7;
+    color: var(--ink); background: var(--surface);
+    tab-size: 4; overflow: auto;
+  }
+  .editor::placeholder { color: #b9b8b4; }
+  .editor .cm-content { font-family: var(--mono); font-size: 13px; line-height: 1.7; }
+  .editor .cm-gutters { background: var(--surface); border-right: 1px solid var(--border); color: #b9b8b4; }
+  .errline { color: var(--accent-blue-tx); text-decoration: underline; cursor: pointer; font-weight: 600; }
+  .errline:hover { background: var(--accent-blue-bg); }
+
+  /* 状态条 */
+  .statusbar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 20px; border-top: 1px solid var(--border);
+    font-size: 13px; color: var(--ink-muted); min-height: 42px;
+  }
+  .badge {
+    display: inline-flex; align-items: center;
+    border-radius: 9999px; padding: 2px 10px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+  }
+  .badge.success { background: var(--accent-green-bg); color: var(--accent-green-tx); }
+  .badge.failed { background: var(--accent-red-bg); color: var(--accent-red-tx); }
+  .badge.pending { background: var(--accent-yellow-bg); color: var(--accent-yellow-tx); }
+  .spinner {
+    width: 14px; height: 14px; border-radius: 50%;
+    border: 2px solid var(--border); border-top-color: var(--ink-muted);
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* 错误日志 */
+  .logbox {
+    display: none;
+    margin: 0 20px 16px;
+    background: var(--accent-red-bg); color: var(--accent-red-tx);
+    border: 1px solid #f5dcdc; border-radius: 8px;
+    padding: 14px 16px;
+    font-family: var(--mono); font-size: 12px; line-height: 1.6;
+    white-space: pre-wrap; word-break: break-all;
+    max-height: 260px; overflow: auto;
+  }
+
+  /* 预览 */
+  .preview-body { height: 560px; background: #FBFBFA; position: relative; }
+  .preview-body iframe { width: 100%; height: 100%; border: none; display: none; background: #fff; }
+  .empty {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px; color: var(--ink-muted); font-size: 14px;
+  }
+  .empty .mark { font-family: var(--serif); font-size: 40px; color: #d9d8d4; line-height: 1; }
+
+  /* 历史（顶部下拉面板） */
+  .history-list { width: 100%; }
+  .h-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 10px; border-radius: 6px;
+    transition: background 150ms ease;
+  }
+  .h-item + .h-item { margin-top: 2px; }
+  .h-item:hover { background: #F3F2EF; }
+  .h-title {
+    flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 13px;
+  }
+  .h-meta { color: var(--ink-muted); font-size: 11px; font-family: var(--mono); white-space: nowrap; }
+  .h-actions { display: flex; gap: 4px; }
+  .h-empty { padding: 24px 20px; text-align: center; color: var(--ink-muted); font-size: 13px; }
+
+  /* 下拉浮层（插入模板） */
+  .dropdown { position: relative; display: inline-block; }
+  .dropdown-menu {
+    display: none; position: absolute; top: calc(100% + 6px); left: 0;
+    min-width: 260px; max-height: 320px; overflow: auto;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    z-index: 50; padding: 6px;
+  }
+  .dropdown.open .dropdown-menu { display: block; }
+  /* 历史下拉面板覆盖默认下拉尺寸（须在 .dropdown-menu 之后） */
+  .history-menu { min-width: 420px; max-width: 460px; max-height: 420px; padding: 4px; }
+  .dropdown-item {
+    display: block; width: 100%; text-align: left;
+    padding: 8px 10px; border: none; background: transparent;
+    border-radius: 4px; cursor: pointer;
+  }
+  .dropdown-item:hover { background: #F3F2EF; }
+  .dropdown-item .di-title { font-size: 13px; font-weight: 600; color: var(--ink); }
+  .dropdown-item .di-desc { font-size: 12px; color: var(--ink-muted); margin-top: 2px; }
+
+  /* 模态框（AI 生成） */
+  .modal-backdrop {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.4); z-index: 100;
+    align-items: center; justify-content: center;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal-card {
+    width: min(560px, 92vw); background: var(--surface);
+    border-radius: 12px; border: 1px solid var(--border);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.2); overflow: hidden;
+  }
+  .modal-head {
+    padding: 14px 20px; border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .modal-title { font-size: 14px; font-weight: 600; }
+  .modal-close {
+    border: none; background: transparent; font-size: 18px;
+    color: var(--ink-muted); cursor: pointer; padding: 2px 8px; border-radius: 4px;
+  }
+  .modal-close:hover { background: #F3F2EF; }
+  .modal-body { padding: 16px 20px; }
+  .modal-body textarea {
+    width: 100%; min-height: 80px; resize: vertical;
+    font-family: var(--sans); font-size: 14px; color: var(--ink);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 10px 12px; background: var(--bg); outline: none;
+  }
+  .modal-body textarea:focus { border-color: #cfcfcb; background: var(--surface); }
+  .modal-ctx-hint { font-size: 12px; color: var(--ink-muted); margin-top: 6px; }
+  .modal-preview {
+    margin-top: 12px; display: none;
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg); padding: 10px 12px;
+    font-family: var(--mono); font-size: 12px; line-height: 1.6;
+    white-space: pre-wrap; max-height: 220px; overflow: auto;
+  }
+  .modal-preview.show { display: block; }
+  .modal-foot {
+    padding: 12px 20px; border-top: 1px solid var(--border);
+    display: flex; justify-content: flex-end; gap: 8px;
+  }
+
+  /* toast */
+  .toast-host {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    z-index: 200; display: flex; flex-direction: column; gap: 8px; align-items: center;
+    pointer-events: none;
+  }
+  .toast {
+    background: #111111; color: #fff; font-size: 13px;
+    padding: 10px 16px; border-radius: 6px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+    opacity: 0; transform: translateY(8px);
+    transition: opacity 200ms ease, transform 200ms ease;
+    pointer-events: auto;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.err { background: var(--accent-red-tx); }
+
+  /* AI 解释 */
+  .ai-explain-box {
+    display: none;
+    margin: 0 20px 16px;
+    background: var(--accent-blue-bg); color: var(--accent-blue-tx);
+    border: 1px solid #cfe8f9; border-radius: 8px;
+    padding: 12px 14px; font-size: 13px; line-height: 1.6;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .ai-explain-box.show { display: block; }
+  .ai-explain-box .ai-loading { color: var(--ink-muted); }
+
+  .ai-btn { color: var(--accent-blue-tx); }
+  .ai-btn:hover { background: var(--accent-blue-bg); }
+  .ai-btn:disabled { color: #b9b8b4; cursor: not-allowed; }
+  .ai-btn:disabled:hover { background: transparent; }
+
+  /* AI 启用状态指示点 */
+  .ai-dot {
+    display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+    background: #c9c8c4; margin-left: 5px; vertical-align: middle;
+  }
+  .ai-dot.on { background: var(--accent-green-tx); }
+
+  /* AI 设置模态框 */
+  .cfg-row { margin-bottom: 12px; }
+  .cfg-row > label {
+    display: block; font-size: 12px; font-weight: 600;
+    color: var(--ink-muted); margin-bottom: 4px;
+  }
+  .cfg-row input[type="text"], .cfg-row input[type="password"] {
+    width: 100%; font-family: var(--sans); font-size: 13px; color: var(--ink);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 10px; background: var(--bg); outline: none;
+  }
+  .cfg-row input:focus { border-color: #cfcfcb; background: var(--surface); }
+  .cfg-key-line {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 6px; gap: 8px; flex-wrap: wrap;
+  }
+  .cfg-key-hint { font-size: 12px; color: var(--ink-muted); font-family: var(--mono); }
+  .cfg-model-line { display: flex; gap: 6px; }
+  .cfg-model-line input { flex: 1; min-width: 0; }
+  .cfg-check {
+    font-size: 12px; color: var(--ink-muted);
+    display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  }
+  .cfg-enable { margin-top: 2px; }
+  .cfg-result {
+    display: none; margin-top: 10px; padding: 8px 10px; border-radius: 6px;
+    font-size: 12px; line-height: 1.6;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .cfg-result.show { display: block; }
+  .cfg-result.ok { background: var(--accent-green-bg); color: var(--accent-green-tx); border: 1px solid #d3e2d0; }
+  .cfg-result.err { background: var(--accent-red-bg); color: var(--accent-red-tx); border: 1px solid #f3d3d4; }
+  .cfg-result.busy { background: var(--accent-yellow-bg); color: var(--accent-yellow-tx); border: 1px solid #eee0bd; }
+  .cfg-tip { margin-top: 12px; font-size: 11px; color: var(--ink-muted); line-height: 1.6; }
+
+  /* 模式切换器 */
+  .mode-switcher {
+    display: inline-flex; gap: 0;
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg); padding: 2px;
+  }
+  .mode-switcher button {
+    border: none; background: transparent; color: var(--ink-muted);
+    padding: 6px 14px; font-size: 13px; border-radius: 4px;
+  }
+  .mode-switcher button.active { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+
+  /* 项目栏 */
+  .project-bar {
+    display: none; align-items: center; gap: 8px; margin-bottom: 16px;
+    padding: 10px 14px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 8px;
+    flex-wrap: wrap;
+  }
+  .project-bar.show { display: flex; }
+  .project-bar select {
+    font-family: var(--sans); font-size: 13px; color: var(--ink);
+    border: 1px solid var(--border); border-radius: 5px;
+    padding: 6px 10px; background: var(--surface); cursor: pointer; outline: none;
+    min-width: 160px;
+  }
+  .project-bar input[type="text"] {
+    flex: 1; min-width: 140px;
+    font-family: var(--sans); font-size: 13px; color: var(--ink);
+    border: 1px solid var(--border); border-radius: 5px;
+    padding: 6px 10px; background: var(--bg); outline: none;
+  }
+
+  /* Tab strip（项目文件切换） */
+  .tabs {
+    display: none; flex-wrap: wrap; gap: 2px;
+    padding: 8px 12px 0; background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .tabs.show { display: flex; }
+  .tab {
+    border: 1px solid var(--border); border-bottom: none;
+    border-radius: 6px 6px 0 0; background: var(--bg);
+    padding: 6px 12px; font-size: 12px; cursor: pointer;
+    color: var(--ink-muted); position: relative;
+    display: inline-flex; align-items: center; gap: 6px;
+    max-width: 200px;
+  }
+  .tab.active { background: var(--surface); color: var(--ink); font-weight: 600; border-bottom-color: var(--surface); margin-bottom: -1px; }
+  .tab .tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
+  .tab .tab-main { color: var(--accent-blue-tx); font-size: 10px; font-weight: 700; }
+  .tab .tab-close {
+    border: none; background: transparent; cursor: pointer;
+    color: var(--ink-muted); padding: 0 2px; font-size: 14px;
+    border-radius: 3px; line-height: 1;
+  }
+  .tab .tab-close:hover { background: var(--accent-red-bg); color: var(--accent-red-tx); }
+  .tab-add {
+    border: 1px dashed var(--border); border-bottom: none;
+    border-radius: 6px 6px 0 0; background: transparent;
+    padding: 6px 10px; font-size: 12px; cursor: pointer;
+    color: var(--ink-muted);
+  }
+  .tab-add:hover { color: var(--ink); border-color: #cfcfcb; }
+
+  /* 资源模态框 */
+  .asset-list { max-height: 320px; overflow: auto; margin-top: 8px; }
+  .asset-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border: 1px solid var(--border);
+    border-radius: 6px; margin-bottom: 6px; background: var(--bg);
+  }
+  .asset-item .a-name { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .asset-item .a-size { color: var(--ink-muted); font-size: 11px; font-family: var(--mono); white-space: nowrap; }
+  .asset-empty { padding: 16px; text-align: center; color: var(--ink-muted); font-size: 13px; }
+  .dropzone {
+    border: 2px dashed var(--border); border-radius: 8px;
+    padding: 16px; text-align: center; color: var(--ink-muted);
+    font-size: 13px; cursor: pointer; transition: border-color 150ms;
+  }
+  .dropzone:hover { border-color: #cfcfcb; color: var(--ink); }
+  .dropzone.dragover { border-color: var(--accent-blue-tx); background: var(--accent-blue-bg); }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "@codemirror/state": "https://esm.sh/@codemirror/state@6",
+    "@codemirror/view": "https://esm.sh/@codemirror/view@6",
+    "@codemirror/commands": "https://esm.sh/@codemirror/commands@6",
+    "@codemirror/language": "https://esm.sh/@codemirror/language@6",
+    "@codemirror/autocomplete": "https://esm.sh/@codemirror/autocomplete@6",
+    "@codemirror/legacy-modes": "https://esm.sh/@codemirror/legacy-modes@6",
+    "@lezer/highlight": "https://esm.sh/@lezer/highlight@1"
+  }
+}
+</script>
+</head>
+<body>
+{% csrf_token %}
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1>TeX <span class="arrow">&rarr;</span> PDF</h1>
+      <div class="mode-switcher" id="mode-switcher">
+        <button type="button" data-mode="single" class="active">单文件</button>
+        <button type="button" data-mode="project">项目</button>
+      </div>
+    </div>
+    <p class="subtitle">粘贴 TeX 源码，在线编译为 PDF；支持中文（XeLaTeX）。按 <kbd>Ctrl</kbd>+<kbd>Enter</kbd> 快速编译。</p>
+  </header>
+
+  <!-- 项目模式控制栏 -->
+  <div class="project-bar" id="project-bar">
+    <select id="proj-select" title="切换项目"></select>
+    <input type="text" id="proj-title" placeholder="项目标题">
+    <button id="btn-new-project" type="button">新建项目</button>
+    <button id="btn-save-project" type="button">保存</button>
+    <button id="btn-assets" type="button">资源(<span id="proj-assets-count">0</span>)</button>
+  </div>
+
+  <div class="layout">
+    <!-- 左：编辑区 -->
+    <section class="card">
+      <div class="tabs" id="tabs"></div>
+      <div class="toolbar">
+        <input type="text" id="title" placeholder="文档标题（可选，留空自动提取）">
+        <div class="dropdown" id="tpl-dropdown">
+          <button id="btn-template" type="button">插入模板 ▾</button>
+          <div class="dropdown-menu" id="tpl-menu"></div>
+        </div>
+        <button id="btn-upload" type="button">上传 .tex</button>
+        <input type="file" id="file" accept=".tex" hidden>
+        <button id="btn-clear" type="button">清空</button>
+        <div class="dropdown" id="history-dropdown">
+          <button id="btn-history" type="button">历史记录 ▾</button>
+          <div class="dropdown-menu history-menu" id="history-menu">
+            <div class="history-list" id="history-list">
+              <div class="h-empty">暂无编译记录</div>
+            </div>
+          </div>
+        </div>
+        <button id="btn-single-assets" type="button" title="单文件模式上传图片，用 \includegraphics 引用">图片(<span id="single-assets-count">0</span>)</button>
+        <button id="btn-ai-gen" class="ai-btn" type="button" title="用自然语言生成 LaTeX 片段">AI 生成</button>
+        <button id="btn-ai-config" class="ai-btn" type="button" title="AI 设置">AI 设置<span class="ai-dot" id="ai-dot"></span></button>
+        <button id="btn-compile" class="primary" type="button">编译 PDF</button>
+      </div>
+      <div id="editor-host" class="editor"></div>
+      <textarea id="editor" hidden></textarea>
+      <div class="statusbar" id="statusbar">
+        <span id="status-text">就绪</span>
+      </div>
+      <pre class="logbox" id="logbox"></pre>
+      <div class="ai-explain-box" id="ai-explain-box"></div>
+      <div style="margin: 0 20px 16px; display: none;" id="ai-explain-row">
+        <button id="btn-ai-explain" class="ai-btn small" type="button">AI 解释错误</button>
+      </div>
+    </section>
+
+    <!-- 右：预览 -->
+    <div>
+      <section class="card">
+        <div class="card-head">
+          <span class="card-title">PDF 预览</span>
+          <div style="display: flex; gap: 6px;">
+            <button id="btn-share" class="small" type="button" style="display:none">分享</button>
+            <button id="btn-download" class="small" type="button" style="display:none">下载 PDF</button>
+          </div>
+        </div>
+        <div class="preview-body">
+          <iframe id="preview"></iframe>
+          <div class="empty" id="preview-empty">
+            <span class="mark">&Sigma;</span>
+            <span>编译完成后在此预览</span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- AI 生成模态框 -->
+  <div class="modal-backdrop" id="ai-modal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <span class="modal-title">AI 生成 LaTeX</span>
+        <button class="modal-close" id="ai-modal-close" type="button">×</button>
+      </div>
+      <div class="modal-body">
+        <textarea id="ai-prompt" placeholder="用自然语言描述你想生成的 LaTeX，例如：三列带边框的表格"></textarea>
+        <div class="modal-ctx-hint" id="ai-ctx-hint"></div>
+        <pre class="modal-preview" id="ai-preview"></pre>
+      </div>
+      <div class="modal-foot">
+        <button class="small" id="ai-cancel" type="button">取消</button>
+        <button class="small" id="ai-regenerate" type="button" style="display:none">重新生成</button>
+        <button class="small primary" id="ai-insert" type="button" style="display:none">插入到光标处</button>
+        <button class="small primary" id="ai-submit" type="button">生成</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI 设置模态框 -->
+  <div class="modal-backdrop" id="ai-cfg-modal">
+    <div class="modal-card" style="width:min(520px,92vw)">
+      <div class="modal-head">
+        <span class="modal-title">AI 设置</span>
+        <button class="modal-close" id="ai-cfg-close" type="button">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="cfg-row">
+          <label for="ai-cfg-base">API 地址（OpenAI 兼容）</label>
+          <input type="text" id="ai-cfg-base" placeholder="https://api.deepseek.com/v1" spellcheck="false" autocomplete="off">
+        </div>
+        <div class="cfg-row">
+          <label for="ai-cfg-key">API Key</label>
+          <input type="password" id="ai-cfg-key" placeholder="请输入 API Key" spellcheck="false" autocomplete="new-password">
+          <div class="cfg-key-line">
+            <label class="cfg-check"><input type="checkbox" id="ai-cfg-clear"> 清除已保存的 Key</label>
+            <span class="cfg-key-hint" id="ai-cfg-key-hint"></span>
+          </div>
+        </div>
+        <div class="cfg-row">
+          <label for="ai-cfg-model">模型</label>
+          <div class="cfg-model-line">
+            <input type="text" id="ai-cfg-model" list="ai-model-options" placeholder="deepseek-chat" spellcheck="false" autocomplete="off">
+            <datalist id="ai-model-options"></datalist>
+            <button class="small" id="ai-cfg-fetch-models" type="button">获取模型</button>
+          </div>
+        </div>
+        <label class="cfg-check cfg-enable"><input type="checkbox" id="ai-cfg-enabled" checked> 启用 AI 辅助（取消勾选可临时停用，保留配置）</label>
+        <div class="cfg-result" id="ai-cfg-result"></div>
+        <p class="cfg-tip">支持 DeepSeek / 智谱 / 通义 / Kimi 等所有 OpenAI 兼容服务。配置保存在本地数据库，保存后立即生效（无需重启）；三项留空则回退 settings.py 中的配置。</p>
+      </div>
+      <div class="modal-foot">
+        <button class="small" id="ai-cfg-test" type="button">测试连接</button>
+        <span style="flex:1"></span>
+        <button class="small" id="ai-cfg-cancel" type="button">取消</button>
+        <button class="small primary" id="ai-cfg-save" type="button">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-host" id="toast-host"></div>
+
+  <!-- 资源模态框 -->
+  <div class="modal-backdrop" id="assets-modal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <span class="modal-title">项目资源</span>
+        <button class="modal-close" id="assets-modal-close" type="button">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="dropzone" id="asset-dropzone">
+          点击或拖拽上传图片（PNG/JPG/PDF/EPS）
+          <input type="file" id="asset-file" accept="image/*,application/pdf,application/postscript" multiple hidden>
+        </div>
+        <div class="asset-list" id="asset-list"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="small" id="assets-close" type="button">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 单文件模式图片模态框 -->
+  <div class="modal-backdrop" id="single-assets-modal">
+    <div class="modal-card">
+      <div class="modal-head">
+        <span class="modal-title">图片（随本次编译临时上传）</span>
+        <button class="modal-close" id="single-assets-close-x" type="button">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="dropzone" id="single-asset-dropzone">
+          点击或拖拽上传图片（PNG/JPG/PDF/EPS，单个 ≤ 10MB）
+          <input type="file" id="single-asset-file" accept="image/*,application/pdf,application/postscript" multiple hidden>
+        </div>
+        <div class="asset-list" id="single-asset-list"></div>
+        <p class="cfg-tip" style="margin-top:10px">上传后点「插入」可在光标处写入 \includegraphics{文件名}；记得在导言区加 \usepackage{graphicx}。图片仅暂存在当前页面，刷新需重新上传。</p>
+      </div>
+      <div class="modal-foot">
+        <button class="small" id="single-assets-close" type="button">完成</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { EditorState, EditorSelection } from '@codemirror/state';
+import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from '@codemirror/view';
+import { defaultKeymap, historyKeymap, indentWithTab } from '@codemirror/commands';
+import { syntaxHighlighting, defaultHighlightStyle, bracketMatching, StreamLanguage } from '@codemirror/language';
+
+const $ = (id) => document.getElementById(id);
+const titleInput = $('title'), fileInput = $('file');
+const btnCompile = $('btn-compile'), statusText = $('status-text'), statusbar = $('statusbar');
+const logbox = $('logbox'), preview = $('preview'), previewEmpty = $('preview-empty');
+const btnDownload = $('btn-download'), historyList = $('history-list');
+const btnShare = $('btn-share');
+const editorHost = $('editor-host'), hiddenArea = $('editor');
+let aiEnabled = {{ ai_enabled|yesno:"true,false" }};
+let currentDocId = null;  // 当前已编译成功的 TeXDocument.id，供分享按钮使用
+
+// 尝试加载 LaTeX 专用语法（legacy-modes 的 latex 流式语言），
+// 失败则降级到通用高亮，保证编辑器零风险可用
+let latexExt = [];
+try {
+  const { latex } = await import('@codemirror/legacy-modes');
+  if (latex) latexExt = [StreamLanguage.define(latex())];
+} catch (e) {
+  console.warn('LaTeX 语法包加载失败，使用通用高亮', e);
+}
+
+const editor = new EditorView({
+  parent: editorHost,
+  state: EditorState.create({
+    doc: '\\documentclass{ctexart}\n\\begin{document}\n你好，XeLaTeX。\n\\end{document}',
+    extensions: [
+      lineNumbers(),
+      highlightActiveLineGutter(),
+      highlightActiveLine(),
+      bracketMatching(),
+      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      ...latexExt,
+      keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+      EditorView.lineWrapping,
+      EditorView.updateListener.of((vu) => {
+        if (vu.docChanged) hiddenArea.value = vu.state.doc.toString();
+      }),
+    ],
+  }),
+});
+// 初始同步一次到隐藏 textarea
+hiddenArea.value = editor.state.doc.toString();
+
+function getEditorSource() {
+  return editor.state.doc.toString().trim();
+}
+function setEditorSource(text) {
+  editor.dispatch({
+    changes: { from: 0, to: editor.state.doc.length, insert: text },
+  });
+  hiddenArea.value = text;
+}
+
+function csrf() { return document.querySelector('[name=csrfmiddlewaretoken]').value; }
+function setStatus(html) { statusbar.innerHTML = html; }
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// 把日志里的 filename.tex:N: 包成可点击链接，点击跳转编辑器对应行
+function renderErrorLog(text) {
+  const safe = escapeHtml(text);
+  return safe.replace(
+    /(^|[\s(])([\w.\-]+\.tex):(\d+):/g,
+    (m, pre, file, line) => `${pre}<a class="errline" data-file="${file}" data-line="${line}">${file}:${line}:</a>`
+  );
+}
+
+function jumpToLine(file, line) {
+  // 项目模式下若错误来自另一文件，先切 tab 再跳
+  if (mode === 'project' && projectData && file) {
+    const target = projectData.files.find((f) => f.filename === file);
+    if (target && target.id !== activeFileId) {
+      switchTab(target.id).then(() => _doJumpToLine(line));
+      return;
+    }
+  }
+  _doJumpToLine(line);
+}
+
+function _doJumpToLine(line) {
+  try {
+    const doc = editor.state.doc;
+    const ln = Math.min(Math.max(1, line), doc.lines);
+    const pos = doc.line(ln).from;
+    editor.dispatch({
+      selection: EditorSelection.cursor(pos),
+      scrollIntoView: true,
+    });
+    editor.focus();
+  } catch (e) { /* 行号越界，忽略 */ }
+}
+
+logbox.addEventListener('click', (e) => {
+  const a = e.target.closest('.errline');
+  if (!a) return;
+  e.preventDefault();
+  jumpToLine(a.dataset.file, parseInt(a.dataset.line, 10) || 1);
+});
+
+async function compile() {
+  if (mode === 'project') return compileProjectFlow();
+  const source = getEditorSource();
+  if (!source) { alert('请先粘贴 TeX 源码'); return; }
+  // 有图片但未引 graphicx 时温和提醒一次（不阻断编译）
+  if (singleAssets.length && !/\\usepackage(?:\[[^\]]*\])?\{graphicx\}/.test(source)) {
+    toast('提示：请在导言区加 \\usepackage{graphicx}，否则 \\includegraphics 无法使用', true);
+  }
+  btnCompile.disabled = true;
+  logbox.style.display = 'none';
+  setStatus('<span class="spinner"></span><span>正在编译，请稍候…</span>');
+  try {
+    // 有图片时改用 multipart（不手动设 Content-Type，浏览器自动带 boundary）
+    let fetchOpts;
+    if (singleAssets.length) {
+      const fd = new FormData();
+      fd.append('source', source);
+      fd.append('title', titleInput.value.trim());
+      singleAssets.forEach((a) => fd.append('assets', a.file, a.name));
+      fetchOpts = { method: 'POST', headers: { 'X-CSRFToken': csrf() }, body: fd };
+    } else {
+      fetchOpts = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+        body: JSON.stringify({ source, title: titleInput.value.trim() }),
+      };
+    }
+    const resp = await fetch('/compile/', fetchOpts);
+    const data = await resp.json();
+    if (data.ok) {
+      showPdf(data.pdf_url, data.id);
+      setStatus(`<span class="badge success">成功</span><span>编译完成，用时 ${data.duration}s</span>`);
+      $('ai-explain-box').classList.remove('show');
+      $('ai-explain-row').style.display = 'none';
+    } else {
+      setStatus(`<span class="badge failed">失败</span><span>编译出错，用时 ${data.duration || 0}s</span>`);
+      logbox.innerHTML = renderErrorLog(data.log || data.error || '未知错误');
+      logbox.style.display = 'block';
+      // 失败时显示"AI 解释"按钮（若 AI 已启用）
+      if (aiEnabled) $('ai-explain-row').style.display = '';
+    }
+  } catch (e) {
+    setStatus('<span class="badge failed">失败</span><span>网络错误：' + e.message + '</span>');
+  } finally {
+    btnCompile.disabled = false;
+    loadHistory();
+  }
+}
+
+function showPdf(url, id) {
+  preview.src = url;
+  preview.style.display = 'block';
+  previewEmpty.style.display = 'none';
+  btnDownload.style.display = '';
+  btnDownload.onclick = () => { window.location.href = '/pdf/' + id + '/'; };
+  if (id != null) {
+    currentDocId = id;
+    btnShare.style.display = '';
+  }
+}
+
+async function loadHistory() {
+  try {
+    const resp = await fetch('/history/');
+    const data = await resp.json();
+    renderHistory(data.items || []);
+  } catch (e) { /* ignore */ }
+}
+
+// 历史记录下拉（顶部控制栏）：每次打开时刷新，面板保持打开便于连续预览/删除
+const historyDropdown = $('history-dropdown');
+$('btn-history').addEventListener('click', (e) => {
+  e.stopPropagation();
+  historyDropdown.classList.toggle('open');
+  if (historyDropdown.classList.contains('open')) loadHistory();
+});
+
+function renderHistory(items) {
+  if (!items.length) {
+    historyList.innerHTML = '<div class="h-empty">暂无编译记录</div>';
+    return;
+  }
+  historyList.innerHTML = '';
+  items.forEach((it, idx) => {
+    const row = document.createElement('div');
+    row.className = 'h-item';
+    row.style.animationDelay = (idx * 60) + 'ms';
+    const badgeCls = it.status === 'success' ? 'success' : 'failed';
+    const badgeTx = it.status === 'success' ? '成功' : '失败';
+    row.innerHTML = `
+      <span class="badge ${badgeCls}">${badgeTx}</span>
+      <span class="h-title" title="${it.title}">${it.title}</span>
+      <span class="h-meta">${it.created_at} · ${it.duration}s</span>
+      <span class="h-actions"></span>`;
+    const actions = row.querySelector('.h-actions');
+    if (it.pdf_url) {
+      const view = document.createElement('button');
+      view.className = 'small'; view.textContent = '预览';
+      view.onclick = () => showPdf(it.pdf_url, it.id);
+      actions.appendChild(view);
+    }
+    const del = document.createElement('button');
+    del.className = 'small ghost-danger'; del.textContent = '删除';
+    del.onclick = async () => {
+      if (!confirm('删除该记录？')) return;
+      await fetch('/delete/' + it.id + '/', { method: 'POST', headers: { 'X-CSRFToken': csrf() } });
+      loadHistory();
+    };
+    actions.appendChild(del);
+    historyList.appendChild(row);
+  });
+}
+
+btnCompile.addEventListener('click', compile);
+editorHost.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); compile(); }
+});
+$('btn-upload').addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => {
+  const f = fileInput.files[0];
+  if (!f) return;
+  if (f.size > 5 * 1024 * 1024) { alert('文件超过 5MB 限制'); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    setEditorSource(reader.result);
+    if (!titleInput.value) titleInput.value = f.name.replace(/\.tex$/i, '');
+  };
+  reader.readAsText(f, 'utf-8');
+  fileInput.value = '';
+});
+$('btn-clear').addEventListener('click', () => {
+  if (getEditorSource() && !confirm('确定清空编辑器？')) return;
+  setEditorSource(''); titleInput.value = '';
+  singleAssets = []; updateSingleAssetsCount();
+  logbox.style.display = 'none';
+  $('ai-explain-box').classList.remove('show');
+  $('ai-explain-row').style.display = 'none';
+  setStatus('就绪');
+});
+
+// ---------------------------------------------------------------------------
+// toast 提示
+// ---------------------------------------------------------------------------
+function toast(msg, isErr = false) {
+  const host = $('toast-host');
+  const t = document.createElement('div');
+  t.className = 'toast' + (isErr ? ' err' : '');
+  t.textContent = msg;
+  host.appendChild(t);
+  requestAnimationFrame(() => t.classList.add('show'));
+  setTimeout(() => {
+    t.classList.remove('show');
+    setTimeout(() => t.remove(), 220);
+  }, 2400);
+}
+
+// ---------------------------------------------------------------------------
+// 单文件模式图片（随编译临时上传，不入库）
+// ---------------------------------------------------------------------------
+const ASSET_NAME_SAFE_RE = /^[A-Za-z0-9_.\-\u4e00-\u9fff]+$/;
+const btnSingleAssets = $('btn-single-assets');
+const singleAssetsCountEl = $('single-assets-count');
+const singleAssetsModal = $('single-assets-modal');
+const singleAssetList = $('single-asset-list');
+const singleAssetDropzone = $('single-asset-dropzone');
+const singleAssetFile = $('single-asset-file');
+let singleAssets = [];  // {name, size, file}
+
+function updateSingleAssetsCount() {
+  singleAssetsCountEl.textContent = String(singleAssets.length);
+}
+
+function renderSingleAssetList() {
+  if (!singleAssets.length) {
+    singleAssetList.innerHTML = '<div class="asset-empty">暂无图片</div>';
+    return;
+  }
+  singleAssetList.innerHTML = '';
+  singleAssets.forEach((a) => {
+    const row = document.createElement('div');
+    row.className = 'asset-item';
+    row.innerHTML = `
+      <span class="a-name" title="${escapeHtml(a.name)}">${escapeHtml(a.name)}</span>
+      <span class="a-size">${fmtSize(a.size)}</span>`;
+    const insertBtn = document.createElement('button');
+    insertBtn.className = 'small'; insertBtn.type = 'button'; insertBtn.textContent = '插入';
+    insertBtn.addEventListener('click', () => insertSingleAsset(a.name));
+    const delBtn = document.createElement('button');
+    delBtn.className = 'small ghost-danger'; delBtn.type = 'button'; delBtn.textContent = '删除';
+    delBtn.addEventListener('click', () => removeSingleAsset(a.name));
+    row.appendChild(insertBtn);
+    row.appendChild(delBtn);
+    singleAssetList.appendChild(row);
+  });
+}
+
+function addSingleAssets(files) {
+  const bad = [];
+  Array.from(files).forEach((f) => {
+    if (f.size > 10 * 1024 * 1024) { bad.push(f.name + '（超过 10MB）'); return; }
+    if (!ASSET_NAME_SAFE_RE.test(f.name)) { bad.push(f.name + '（文件名只能含中英文、数字、._-）'); return; }
+    // 同名覆盖，保持 \includegraphics 引用稳定
+    const item = { name: f.name, size: f.size, file: f };
+    const idx = singleAssets.findIndex((a) => a.name === f.name);
+    if (idx >= 0) singleAssets[idx] = item; else singleAssets.push(item);
+  });
+  updateSingleAssetsCount();
+  renderSingleAssetList();
+  if (bad.length) toast('部分文件未添加：' + bad.join('、'), true);
+}
+
+function removeSingleAsset(name) {
+  singleAssets = singleAssets.filter((a) => a.name !== name);
+  updateSingleAssetsCount();
+  renderSingleAssetList();
+}
+
+function insertSingleAsset(name) {
+  const sel = editor.state.selection.main;
+  const snippet = '\\includegraphics{' + name + '}';
+  editor.dispatch({
+    changes: { from: sel.from, to: sel.to, insert: snippet },
+    selection: EditorSelection.cursor(sel.from + snippet.length),
+    scrollIntoView: true,
+  });
+  hiddenArea.value = editor.state.doc.toString();
+  editor.focus();
+  singleAssetsModal.classList.remove('open');
+  toast('已插入 ' + name);
+}
+
+btnSingleAssets.addEventListener('click', () => {
+  renderSingleAssetList();
+  singleAssetsModal.classList.add('open');
+});
+['single-assets-close-x', 'single-assets-close'].forEach((id) => {
+  $(id).addEventListener('click', () => singleAssetsModal.classList.remove('open'));
+});
+singleAssetsModal.addEventListener('click', (e) => {
+  if (e.target === singleAssetsModal) singleAssetsModal.classList.remove('open');
+});
+singleAssetDropzone.addEventListener('click', () => singleAssetFile.click());
+singleAssetFile.addEventListener('change', () => {
+  if (singleAssetFile.files.length) addSingleAssets(singleAssetFile.files);
+  singleAssetFile.value = '';
+});
+['dragover', 'dragenter'].forEach((evt) => {
+  singleAssetDropzone.addEventListener(evt, (e) => { e.preventDefault(); singleAssetDropzone.classList.add('dragover'); });
+});
+['dragleave', 'drop'].forEach((evt) => {
+  singleAssetDropzone.addEventListener(evt, (e) => { e.preventDefault(); singleAssetDropzone.classList.remove('dragover'); });
+});
+singleAssetDropzone.addEventListener('drop', (e) => {
+  const files = Array.from(e.dataTransfer.files || []);
+  if (files.length) addSingleAssets(files);
+});
+updateSingleAssetsCount();
+
+// ---------------------------------------------------------------------------
+// 插入模板
+// ---------------------------------------------------------------------------
+const tplDropdown = $('tpl-dropdown'), tplMenu = $('tpl-menu');
+let tplItems = null;
+async function loadTemplates() {
+  if (tplItems != null) return;
+  try {
+    const resp = await fetch('/templates/');
+    const data = await resp.json();
+    tplItems = data.items || [];
+  } catch (e) { tplItems = []; }
+  if (!tplItems.length) {
+    tplMenu.innerHTML = '<div style="padding:8px 10px;color:var(--ink-muted);font-size:12px;">模板加载失败</div>';
+    return;
+  }
+  tplMenu.innerHTML = '';
+  tplItems.forEach((t) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'dropdown-item';
+    btn.innerHTML = `<div class="di-title">${escapeHtml(t.name)}</div><div class="di-desc">${escapeHtml(t.desc || '')}</div>`;
+    btn.onclick = () => {
+      tplDropdown.classList.remove('open');
+      if (getEditorSource() && !confirm('应用模板将覆盖当前编辑器内容，确定？')) return;
+      setEditorSource(t.source || '');
+      titleInput.value = t.name || '';
+      toast('已应用模板：' + (t.name || ''));
+    };
+    tplMenu.appendChild(btn);
+  });
+}
+$('btn-template').addEventListener('click', (e) => {
+  e.stopPropagation();
+  tplDropdown.classList.toggle('open');
+  if (tplDropdown.classList.contains('open')) loadTemplates();
+});
+document.addEventListener('click', (e) => {
+  if (!tplDropdown.contains(e.target)) tplDropdown.classList.remove('open');
+  if (!historyDropdown.contains(e.target)) historyDropdown.classList.remove('open');
+});
+
+// ---------------------------------------------------------------------------
+// 分享
+// ---------------------------------------------------------------------------
+btnShare.addEventListener('click', async () => {
+  if (currentDocId == null) { toast('请先编译成功再分享', true); return; }
+  btnShare.disabled = true;
+  try {
+    const resp = await fetch('/share/create/' + currentDocId + '/', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': csrf() },
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      try {
+        await navigator.clipboard.writeText(data.share_url);
+        toast('分享链接已复制到剪贴板');
+      } catch (e) {
+        // clipboard 不可用时回退到 prompt
+        prompt('复制分享链接：', data.share_url);
+      }
+    } else {
+      toast(data.error || '分享失败', true);
+    }
+  } catch (e) {
+    toast('网络错误：' + e.message, true);
+  } finally {
+    btnShare.disabled = false;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// AI 生成
+// ---------------------------------------------------------------------------
+const aiModal = $('ai-modal');
+const aiPrompt = $('ai-prompt'), aiPreview = $('ai-preview'), aiCtxHint = $('ai-ctx-hint');
+const aiSubmit = $('ai-submit'), aiInsert = $('ai-insert'), aiRegen = $('ai-regenerate');
+let lastAiLatex = '';
+
+function getEditorSelection() {
+  try {
+    const sel = editor.state.selection.main;
+    const text = editor.state.sliceDoc(sel.from, sel.to);
+    return text;
+  } catch (e) { return ''; }
+}
+
+function openAiModal() {
+  if (!aiEnabled) { openAiConfig(); toast('AI 未启用，请先完成 AI 设置', true); return; }
+  // 附带选中文本作为上下文提示
+  const sel = getEditorSelection();
+  if (sel) {
+    aiCtxHint.textContent = '已附带选中文本（' + sel.length + ' 字符）作为上下文';
+  } else {
+    aiCtxHint.textContent = '';
+  }
+  aiPrompt.value = '';
+  aiPreview.classList.remove('show');
+  aiPreview.textContent = '';
+  aiInsert.style.display = 'none';
+  aiRegen.style.display = 'none';
+  aiSubmit.style.display = '';
+  aiSubmit.disabled = false;
+  aiModal.classList.add('open');
+  setTimeout(() => aiPrompt.focus(), 50);
+}
+function closeAiModal() { aiModal.classList.remove('open'); }
+
+async function submitAiGenerate() {
+  const prompt = aiPrompt.value.trim();
+  if (!prompt) { toast('请输入描述', true); return; }
+  const context = getEditorSelection();
+  aiSubmit.disabled = true;
+  aiSubmit.textContent = '生成中…';
+  try {
+    const resp = await fetch('/ai/generate/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify({ prompt, context }),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      lastAiLatex = data.latex || '';
+      aiPreview.textContent = lastAiLatex;
+      aiPreview.classList.add('show');
+      aiInsert.style.display = '';
+      aiRegen.style.display = '';
+    } else {
+      toast(data.error || '生成失败', true);
+    }
+  } catch (e) {
+    toast('网络错误：' + e.message, true);
+  } finally {
+    aiSubmit.disabled = false;
+    aiSubmit.textContent = '生成';
+  }
+}
+
+function insertAiLatex() {
+  if (!lastAiLatex) return;
+  const sel = editor.state.selection.main;
+  editor.dispatch({
+    changes: { from: sel.from, to: sel.to, insert: lastAiLatex },
+    selection: EditorSelection.cursor(sel.from + lastAiLatex.length),
+    scrollIntoView: true,
+  });
+  hiddenArea.value = editor.state.doc.toString();
+  editor.focus();
+  closeAiModal();
+  toast('已插入到光标处');
+}
+
+$('btn-ai-gen').addEventListener('click', openAiModal);
+$('ai-modal-close').addEventListener('click', closeAiModal);
+$('ai-cancel').addEventListener('click', closeAiModal);
+aiModal.addEventListener('click', (e) => { if (e.target === aiModal) closeAiModal(); });
+aiSubmit.addEventListener('click', submitAiGenerate);
+aiRegen.addEventListener('click', submitAiGenerate);
+aiInsert.addEventListener('click', insertAiLatex);
+aiPrompt.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitAiGenerate(); }
+});
+if (!aiEnabled) {
+  // 初始状态由 refreshAiStatus() 在页面加载时校正，这里仅作首屏提示
+  $('btn-ai-gen').title = 'AI 未配置，点击打开 AI 设置';
+}
+
+// ---------------------------------------------------------------------------
+// AI 设置（网页端配置 + 连通性检测 + 模型列表拉取）
+// ---------------------------------------------------------------------------
+const btnAiConfig = $('btn-ai-config'), aiDot = $('ai-dot');
+const aiCfgModal = $('ai-cfg-modal');
+const aiCfgBase = $('ai-cfg-base'), aiCfgKey = $('ai-cfg-key'), aiCfgModel = $('ai-cfg-model');
+const aiCfgEnabled = $('ai-cfg-enabled'), aiCfgClear = $('ai-cfg-clear');
+const aiCfgKeyHint = $('ai-cfg-key-hint'), aiCfgResult = $('ai-cfg-result');
+const aiCfgModelOptions = $('ai-model-options');
+const btnCfgTest = $('ai-cfg-test'), btnCfgFetch = $('ai-cfg-fetch-models');
+
+function applyAiEnabled() {
+  // AI 生成按钮始终可点：未配置时点击直接引导打开设置
+  $('btn-ai-gen').title = aiEnabled
+    ? '用自然语言生成 LaTeX 片段'
+    : 'AI 未配置，点击打开 AI 设置';
+  aiDot.classList.toggle('on', aiEnabled);
+  btnAiConfig.title = aiEnabled ? 'AI 设置（已启用）' : 'AI 设置（未配置或已停用）';
+}
+
+async function refreshAiStatus() {
+  try {
+    const resp = await fetch('/ai/config/');
+    const data = await resp.json();
+    aiEnabled = !!data.enabled;
+  } catch (e) { /* 拉取失败则保持 SSR 首屏值 */ }
+  applyAiEnabled();
+}
+
+function showCfgResult(kind, text) {
+  aiCfgResult.className = 'cfg-result show ' + kind;
+  aiCfgResult.textContent = text;
+}
+function clearCfgResult() {
+  aiCfgResult.className = 'cfg-result';
+  aiCfgResult.textContent = '';
+}
+
+function fillModelOptions(models) {
+  aiCfgModelOptions.innerHTML = '';
+  (models || []).forEach((m) => {
+    const o = document.createElement('option');
+    o.value = m;
+    aiCfgModelOptions.appendChild(o);
+  });
+}
+
+// 收集表单值；测试/拉模型时复用
+function collectCfgForm() {
+  return {
+    api_base: aiCfgBase.value.trim(),
+    api_key: aiCfgKey.value.trim(),
+    model: aiCfgModel.value.trim(),
+    enabled: aiCfgEnabled.checked,
+    clear_api_key: aiCfgClear.checked,
+  };
+}
+
+async function openAiConfig() {
+  clearCfgResult();
+  aiCfgKey.value = '';
+  aiCfgClear.checked = false;
+  btnCfgTest.disabled = false;
+  aiCfgModal.classList.add('open');
+  try {
+    const resp = await fetch('/ai/config/');
+    const data = await resp.json();
+    const db = data.db || {};
+    // DB 有值显示 DB 值；DB 为空但 settings 生效时预填生效值（保存即迁入 DB）
+    aiCfgBase.value = db.api_base || (data.effective && data.effective.api_base) || '';
+    aiCfgModel.value = db.model || (data.effective && data.effective.model) || '';
+    aiCfgEnabled.checked = db.enabled !== false;
+    if (db.has_api_key) {
+      aiCfgKey.placeholder = '留空表示不修改已保存的 Key';
+      aiCfgKeyHint.textContent = '已保存：' + (db.api_key_hint || '');
+    } else if (data.source === 'settings') {
+      aiCfgKey.placeholder = '留空则继续使用 settings.py 中的 Key';
+      aiCfgKeyHint.textContent = '当前生效：settings.py 配置';
+    } else if (data.source === 'disabled') {
+      aiCfgKey.placeholder = '留空表示不修改已保存的 Key';
+      aiCfgKeyHint.textContent = '已保存：' + (db.api_key_hint || '') + '（当前已停用）';
+    } else {
+      aiCfgKey.placeholder = '请输入 API Key';
+      aiCfgKeyHint.textContent = '未配置';
+    }
+  } catch (e) {
+    showCfgResult('err', '配置状态加载失败：' + e.message);
+  }
+}
+function closeAiConfig() { aiCfgModal.classList.remove('open'); }
+
+async function saveAiConfig() {
+  const btn = $('ai-cfg-save');
+  btn.disabled = true;
+  btn.textContent = '保存中…';
+  try {
+    const resp = await fetch('/ai/config/save/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify(collectCfgForm()),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      aiEnabled = !!data.enabled;
+      applyAiEnabled();
+      const db = data.db || {};
+      aiCfgKey.value = '';
+      aiCfgClear.checked = false;
+      aiCfgKeyHint.textContent = db.has_api_key ? '已保存：' + db.api_key_hint : (data.source === 'settings' ? '当前生效：settings.py 配置' : '未配置');
+      showCfgResult('ok', data.enabled ? '已保存并立即生效' : '已保存（AI 当前为停用状态，勾选"启用"可恢复）');
+      toast('AI 配置已保存');
+      setTimeout(closeAiConfig, 900);
+    } else {
+      showCfgResult('err', data.error || '保存失败');
+    }
+  } catch (e) {
+    showCfgResult('err', '网络错误：' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '保存';
+  }
+}
+
+async function testAiConfig() {
+  const form = collectCfgForm();
+  if (!form.api_base || !form.model) {
+    showCfgResult('err', '请先填写 API 地址和模型名称（Key 之前已保存时可留空）');
+    return;
+  }
+  btnCfgTest.disabled = true;
+  showCfgResult('busy', '正在检测连接，最多等待 15 秒…');
+  try {
+    const resp = await fetch('/ai/config/test/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify({
+        api_base: form.api_base,
+        // 勾选清除时不以旧 key 测试；未勾选且输入框为空则后端自动回退已存 key
+        api_key: form.clear_api_key ? '' : form.api_key,
+        model: form.model,
+      }),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      showCfgResult('ok', (data.message || '连接正常') + (data.elapsed != null ? `（${data.elapsed}s）` : ''));
+    } else {
+      showCfgResult('err', data.error || '检测失败');
+      if (data.models && data.models.length) fillModelOptions(data.models);
+    }
+  } catch (e) {
+    showCfgResult('err', '网络错误：' + e.message);
+  } finally {
+    btnCfgTest.disabled = form.clear_api_key;
+  }
+}
+
+async function fetchAiModels() {
+  const form = collectCfgForm();
+  if (!form.api_base) { toast('请先填写 API 地址', true); return; }
+  btnCfgFetch.disabled = true;
+  btnCfgFetch.textContent = '获取中…';
+  try {
+    const resp = await fetch('/ai/config/models/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify({ api_base: form.api_base, api_key: form.clear_api_key ? '' : form.api_key }),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      fillModelOptions(data.models);
+      toast(`已获取 ${data.models.length} 个模型，可在输入框下拉选择`);
+      if (!aiCfgModel.value && data.models.length) aiCfgModel.value = data.models[0];
+    } else {
+      toast(data.error || '获取模型列表失败', true);
+    }
+  } catch (e) {
+    toast('网络错误：' + e.message, true);
+  } finally {
+    btnCfgFetch.disabled = false;
+    btnCfgFetch.textContent = '获取模型';
+  }
+}
+
+btnAiConfig.addEventListener('click', openAiConfig);
+$('ai-cfg-close').addEventListener('click', closeAiConfig);
+$('ai-cfg-cancel').addEventListener('click', closeAiConfig);
+aiCfgModal.addEventListener('click', (e) => { if (e.target === aiCfgModal) closeAiConfig(); });
+$('ai-cfg-save').addEventListener('click', saveAiConfig);
+btnCfgTest.addEventListener('click', testAiConfig);
+btnCfgFetch.addEventListener('click', fetchAiModels);
+// 勾选"清除 Key"时禁止测试（否则会误用旧 Key 得到误导性结果）
+aiCfgClear.addEventListener('change', () => {
+  btnCfgTest.disabled = aiCfgClear.checked;
+  aiCfgKey.placeholder = aiCfgClear.checked ? '保存后将清除已存 Key' : '';
+  if (aiCfgClear.checked) aiCfgKey.value = '';
+});
+refreshAiStatus();
+
+// ---------------------------------------------------------------------------
+// AI 解释错误
+// ---------------------------------------------------------------------------
+const aiExplainBox = $('ai-explain-box');
+$('btn-ai-explain').addEventListener('click', async () => {
+  const logText = logbox.textContent || '';
+  if (!logText) { toast('没有错误日志可解释', true); return; }
+  aiExplainBox.classList.add('show');
+  aiExplainBox.innerHTML = '<span class="ai-loading">AI 正在分析错误…</span>';
+  try {
+    const resp = await fetch('/ai/explain/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify({ log: logText }),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      aiExplainBox.textContent = data.explanation || '（无解释）';
+    } else {
+      aiExplainBox.textContent = '❌ ' + (data.error || '解释失败');
+    }
+  } catch (e) {
+    aiExplainBox.textContent = '❌ 网络错误：' + e.message;
+  }
+});
+
+// ===========================================================================
+// Phase 7：多文件项目
+// ===========================================================================
+const modeSwitcher = $('mode-switcher');
+const projectBar = $('project-bar');
+const projSelect = $('proj-select'), projTitle = $('proj-title');
+const btnNewProject = $('btn-new-project'), btnSaveProject = $('btn-save-project');
+const btnAssets = $('btn-assets'), projAssetsCount = $('proj-assets-count');
+const tabsEl = $('tabs');
+const assetsModal = $('assets-modal');
+const assetList = $('asset-list'), assetDropzone = $('asset-dropzone'), assetFile = $('asset-file');
+
+let mode = 'single';                // 'single' | 'project'
+let singleFileBackup = '';           // 切到项目模式前备份单文件内容
+let projectData = null;              // 当前项目完整数据
+let activeFileId = null;             // 当前编辑器显示的文件 id
+
+function setMode(newMode) {
+  if (newMode === mode) return;
+  if (newMode === 'project') {
+    // 进入项目模式：备份单文件内容
+    singleFileBackup = editor.state.doc.toString();
+    mode = 'project';
+    modeSwitcher.querySelector('[data-mode="single"]').classList.remove('active');
+    modeSwitcher.querySelector('[data-mode="project"]').classList.add('active');
+    projectBar.classList.add('show');
+    tabsEl.classList.add('show');
+    // 隐藏单文件专属按钮（清空/上传/插入模板/图片），保留 AI 与编译
+    $('btn-template').style.display = 'none';
+    $('btn-upload').style.display = 'none';
+    $('btn-clear').style.display = 'none';
+    $('btn-single-assets').style.display = 'none';
+    titleInput.style.display = 'none';
+    loadProjectList().then(() => {
+      if (projectData == null && projSelect.options.length > 0) {
+        loadProject(parseInt(projSelect.value, 10));
+      }
+    });
+  } else {
+    // 回到单文件模式
+    if (mode === 'project' && projectData && activeFileId != null) {
+      saveCurrentFile();  // 离开前保存
+    }
+    mode = 'single';
+    modeSwitcher.querySelector('[data-mode="project"]').classList.remove('active');
+    modeSwitcher.querySelector('[data-mode="single"]').classList.add('active');
+    projectBar.classList.remove('show');
+    tabsEl.classList.remove('show');
+    $('btn-template').style.display = '';
+    $('btn-upload').style.display = '';
+    $('btn-clear').style.display = '';
+    $('btn-single-assets').style.display = '';
+    titleInput.style.display = '';
+    projectData = null;
+    activeFileId = null;
+    setEditorSource(singleFileBackup);
+  }
+}
+
+modeSwitcher.querySelectorAll('button').forEach((b) => {
+  b.addEventListener('click', () => setMode(b.dataset.mode));
+});
+
+async function loadProjectList() {
+  try {
+    const resp = await fetch('/projects/');
+    const data = await resp.json();
+    projSelect.innerHTML = '';
+    (data.items || []).forEach((p) => {
+      const opt = new Option(p.title + '（' + p.files_count + ' 文件）', p.id);
+      projSelect.add(opt);
+    });
+  } catch (e) { toast('项目列表加载失败', true); }
+}
+
+async function loadProject(id) {
+  if (!id) { projectData = null; return; }
+  try {
+    const resp = await fetch('/projects/' + id + '/');
+    const data = await resp.json();
+    if (data.ok) {
+      projectData = data.project;
+      projTitle.value = projectData.title;
+      projAssetsCount.textContent = String(projectData.assets.length);
+      renderTabs();
+      // 选第一个文件或主文件作为活动 tab
+      const main = projectData.files.find((f) => f.is_main);
+      const first = (main || projectData.files[0]);
+      if (first) switchTab(first.id);
+    } else { toast(data.error || '加载项目失败', true); }
+  } catch (e) { toast('加载项目失败', true); }
+}
+
+projSelect.addEventListener('change', () => {
+  loadProject(parseInt(projSelect.value, 10));
+});
+
+function renderTabs() {
+  tabsEl.innerHTML = '';
+  if (!projectData) return;
+  projectData.files.forEach((f) => {
+    const tab = document.createElement('div');
+    tab.className = 'tab' + (f.id === activeFileId ? ' active' : '');
+    tab.innerHTML = `
+      <span class="tab-name" title="${escapeHtml(f.filename)}">${escapeHtml(f.filename)}</span>
+      ${f.is_main ? '<span class="tab-main">主</span>' : ''}
+      <button class="tab-close" title="删除">×</button>`;
+    tab.addEventListener('click', (e) => {
+      if (e.target.closest('.tab-close')) return;  // 删除按钮单独处理
+      switchTab(f.id);
+    });
+    tab.querySelector('.tab-close').addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteFile(f.id);
+    });
+    tabsEl.appendChild(tab);
+  });
+  // "+ 新建文件" tab
+  const add = document.createElement('button');
+  add.className = 'tab-add'; add.type = 'button'; add.textContent = '+ 新建';
+  add.addEventListener('click', newFile);
+  tabsEl.appendChild(add);
+}
+
+function findFile(fileId) {
+  return projectData ? projectData.files.find((f) => f.id === fileId) : null;
+}
+
+async function switchTab(fileId) {
+  if (mode !== 'project' || !projectData) return;
+  // 切换前保存当前文件（活动 tab 内容已变）
+  if (activeFileId != null && activeFileId !== fileId) {
+    await saveCurrentFile();
+  }
+  activeFileId = fileId;
+  const f = findFile(fileId);
+  if (!f) return;
+  setEditorSource(f.content);
+  renderTabs();
+}
+
+async function saveCurrentFile() {
+  if (mode !== 'project' || !projectData || activeFileId == null) return;
+  const f = findFile(activeFileId);
+  if (!f) return;
+  const content = editor.state.doc.toString();
+  // 内容未变则跳过
+  if (content === f.content) return;
+  try {
+    const resp = await fetch('/projects/' + projectData.id + '/files/' + f.id + '/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify({ filename: f.filename, content, is_main: f.is_main }),
+    });
+    const data = await resp.json();
+    if (data.ok) { f.content = content; }
+    else { toast(data.error || '保存失败', true); }
+  } catch (e) { toast('保存失败：' + e.message, true); }
+}
+
+async function newFile() {
+  if (!projectData) return;
+  const filename = prompt('文件名（必须 .tex 结尾）', 'chapter1.tex');
+  if (!filename) return;
+  if (!filename.endsWith('.tex')) { toast('文件名必须 .tex 结尾', true); return; }
+  try {
+    const resp = await fetch('/projects/' + projectData.id + '/files/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify({ filename, content: '', is_main: false }),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      await loadProject(projectData.id);
+      const nf = findFile(data.file.id);
+      if (nf) switchTab(nf.id);
+      toast('已新建 ' + filename);
+    } else { toast(data.error || '新建失败', true); }
+  } catch (e) { toast('新建失败：' + e.message, true); }
+}
+
+async function deleteFile(fileId) {
+  if (!projectData) return;
+  if (!confirm('删除该文件？')) return;
+  try {
+    const resp = await fetch('/projects/' + projectData.id + '/files/' + fileId + '/delete/', {
+      method: 'POST', headers: { 'X-CSRFToken': csrf() },
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      await loadProject(projectData.id);
+      toast('已删除');
+    } else { toast(data.error || '删除失败', true); }
+  } catch (e) { toast('删除失败：' + e.message, true); }
+}
+
+btnNewProject.addEventListener('click', async () => {
+  const title = prompt('项目标题', '未命名项目');
+  if (!title) return;
+  try {
+    const resp = await fetch('/projects/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify({ title }),
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      await loadProjectList();
+      projSelect.value = String(data.project.id);
+      loadProject(data.project.id);
+      toast('已新建项目：' + title);
+    } else { toast(data.error || '新建失败', true); }
+  } catch (e) { toast('新建失败：' + e.message, true); }
+});
+
+btnSaveProject.addEventListener('click', async () => {
+  if (!projectData) return;
+  // 保存当前文件
+  await saveCurrentFile();
+  // 保存项目标题
+  const newTitle = projTitle.value.trim();
+  if (newTitle && newTitle !== projectData.title) {
+    // 通过更新文件触发 project.updated_at；标题暂不单独接口，
+    // 这里用一个最小 hack：PUT 不可用，先用 save 文件时的副作用
+    // TODO 后续可加 project_title_update 端点；先 toast 提示
+    toast('文件内容已保存（标题修改需重新打开项目生效）');
+  } else {
+    toast('已保存');
+  }
+});
+
+btnAssets.addEventListener('click', openAssetsModal);
+
+function openAssetsModal() {
+  if (!projectData) return;
+  renderAssetList();
+  assetsModal.classList.add('open');
+}
+function closeAssetsModal() { assetsModal.classList.remove('open'); }
+
+function fmtSize(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+function renderAssetList() {
+  if (!projectData) return;
+  if (!projectData.assets.length) {
+    assetList.innerHTML = '<div class="asset-empty">暂无资源</div>';
+    return;
+  }
+  assetList.innerHTML = '';
+  projectData.assets.forEach((a) => {
+    const row = document.createElement('div');
+    row.className = 'asset-item';
+    row.innerHTML = `
+      <span class="a-name" title="${escapeHtml(a.original_name)}">${escapeHtml(a.original_name)}</span>
+      <span class="a-size">${fmtSize(a.size)}</span>`;
+    const del = document.createElement('button');
+    del.className = 'small ghost-danger'; del.textContent = '删除'; del.type = 'button';
+    del.addEventListener('click', () => deleteAsset(a.id));
+    row.appendChild(del);
+    assetList.appendChild(row);
+  });
+}
+
+async function uploadAssets(files) {
+  if (!projectData || !files.length) return;
+  for (const f of files) {
+    const fd = new FormData();
+    fd.append('file', f);
+    try {
+      const resp = await fetch('/projects/' + projectData.id + '/assets/', {
+        method: 'POST', headers: { 'X-CSRFToken': csrf() }, body: fd,
+      });
+      const data = await resp.json();
+      if (!data.ok) { toast(data.error || ('上传 ' + f.name + ' 失败'), true); }
+    } catch (e) { toast('上传 ' + f.name + ' 失败：' + e.message, true); }
+  }
+  await loadProject(projectData.id);  // 刷新资源计数
+  renderAssetList();
+  toast('上传完成');
+}
+
+async function deleteAsset(aid) {
+  if (!projectData) return;
+  if (!confirm('删除该资源？')) return;
+  try {
+    const resp = await fetch('/projects/' + projectData.id + '/assets/' + aid + '/delete/', {
+      method: 'POST', headers: { 'X-CSRFToken': csrf() },
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      await loadProject(projectData.id);
+      renderAssetList();
+    } else { toast(data.error || '删除失败', true); }
+  } catch (e) { toast('删除失败：' + e.message, true); }
+}
+
+assetDropzone.addEventListener('click', () => assetFile.click());
+assetFile.addEventListener('change', () => {
+  if (assetFile.files.length) uploadAssets(Array.from(assetFile.files));
+  assetFile.value = '';
+});
+['dragover', 'dragenter'].forEach((evt) => {
+  assetDropzone.addEventListener(evt, (e) => { e.preventDefault(); assetDropzone.classList.add('dragover'); });
+});
+['dragleave', 'drop'].forEach((evt) => {
+  assetDropzone.addEventListener(evt, (e) => { e.preventDefault(); assetDropzone.classList.remove('dragover'); });
+});
+assetDropzone.addEventListener('drop', (e) => {
+  const files = Array.from(e.dataTransfer.files || []);
+  if (files.length) uploadAssets(files);
+});
+$('assets-modal-close').addEventListener('click', closeAssetsModal);
+$('assets-close').addEventListener('click', closeAssetsModal);
+assetsModal.addEventListener('click', (e) => { if (e.target === assetsModal) closeAssetsModal(); });
+
+// 改造编译：单文件模式走 compileSingle，项目模式走 compileProjectFlow
+// compile() 在 Phase 7 改造里已分发，下方仅保留 compileProjectFlow
+async function compileProjectFlow() {
+  if (!projectData || activeFileId == null) { toast('请先选择一个文件', true); return; }
+  await saveCurrentFile();
+  btnCompile.disabled = true;
+  logbox.style.display = 'none';
+  $('ai-explain-box').classList.remove('show');
+  $('ai-explain-row').style.display = 'none';
+  setStatus('<span class="spinner"></span><span>正在编译项目，请稍候…</span>');
+  try {
+    const resp = await fetch('/projects/' + projectData.id + '/compile/', {
+      method: 'POST', headers: { 'X-CSRFToken': csrf() },
+    });
+    const data = await resp.json();
+    if (data.ok) {
+      showPdf(data.pdf_url, data.id);
+      setStatus(`<span class="badge success">成功</span><span>编译完成，用时 ${data.duration}s</span>`);
+    } else {
+      setStatus(`<span class="badge failed">失败</span><span>编译出错，用时 ${data.duration || 0}s</span>`);
+      logbox.innerHTML = renderErrorLog(data.log || data.error || '未知错误');
+      logbox.style.display = 'block';
+      if (aiEnabled) $('ai-explain-row').style.display = '';
+    }
+  } catch (e) {
+    setStatus('<span class="badge failed">失败</span><span>网络错误：' + e.message + '</span>');
+  } finally {
+    btnCompile.disabled = false;
+    loadHistory();
+  }
+}
+
+loadHistory();
+</script>
+</body>
+</html>

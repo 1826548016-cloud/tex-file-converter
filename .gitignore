@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# 运行时数据
+db.sqlite3
+media/
+static/
+
+# IDE / 编辑器
+.trae/
+.vscode/
+.idea/
+
+# 日志
+*.log
